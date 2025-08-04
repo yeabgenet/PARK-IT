@@ -2,6 +2,7 @@ import { useState , useEffect } from 'react';
 import {Link} from 'react-router-dom'
 import Dropdown from '../Dropdown/Dropdown';
 
+
 function Nav() {
 
     const [isScrolled , SetIsScrolled]=useState(false);
@@ -16,7 +17,7 @@ function Nav() {
         ${isScrolled ? 'bg-[#111111] shadow-md' : 'bg-transparent'}`}>
 
 <div>
-  <Link to='/Index' className='flex items-center relative '>
+  <Link to='/' className='flex items-center relative '>
     <img src="./images/logo.png" alt="logo" className='logo h-[40px] lg:h-[60px] m-0 p-0 ' />
     <h5 className=" logotext  text-lg font-semibold w-[100%] relative">PARK IT</h5>
   </Link>

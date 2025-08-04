@@ -1,15 +1,13 @@
 import React from 'react'
 
-function ParkingHistory() {
+function ForgetPassword() {
   return (
     <>
-    
     <div>
-        
+        Forgot password
     </div>
-    
     </>
   )
 }
 
-export default ParkingHistory
+export default ForgetPassword

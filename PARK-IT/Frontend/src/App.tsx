@@ -1,22 +1,34 @@
-import { useState , useEffect } from 'react';
-import { BrowserRouter as Router , Routes , Route} from 'react-router-dom';
-import Nav from './Components/Nav/Nav'
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import Nav from './Components/Nav/Nav';
+import Index from './Components/Pages/Index';
+import Login from './Components/Pages/Login';
+import UserForm from './Components/Pages/UserForm';
 
-function App() {
+const AppContent = () => {
+  const location = useLocation();
+
+  // Hide Nav on /login and /userform
+  const hideNav = ['/login', '/userform'].includes(location.pathname.toLowerCase());
 
   return (
     <>
-    <Router>
-    <Nav/>
-    <Routes>
-      <Route /* path='' element={<Index/>} */> </Route>
+      {!hideNav && <Nav />}
 
-    </Routes>
-    </Router>
-
-  
+      <Routes>
+        <Route path="/" element={<Index />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/userform" element={<UserForm />} />
+      </Routes>
     </>
-  )
+  );
+};
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
+  );
 }
 
-export default App
+export default App;

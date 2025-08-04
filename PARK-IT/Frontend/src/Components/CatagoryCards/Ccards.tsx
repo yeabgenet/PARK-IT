@@ -1,11 +1,10 @@
 import React from 'react'
 
-function Terminal() {
+function Ccards() {
   return (
     <>
-    
     </>
   )
 }
 
-export default Terminal
+export default Ccards

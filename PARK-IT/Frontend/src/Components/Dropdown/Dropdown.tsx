@@ -1,12 +1,13 @@
 import {Link} from 'react-router-dom'
 
+
 function Dropdown() {
   return (
     <>
     <div className='flex flex-col dropDownMenu'>
-        <ul className=' flex flex-col gap-4 w-100% text-xl text-white '>
+        <ul className=' flex flex-col gap-4 w-100% text-xl text-white items-start'>
             <Link to='/Profile'>
-            <li className='text-base'>
+            <li className='text-base '>
                . Profile
             </li>
             </Link>
