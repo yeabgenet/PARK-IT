@@ -1,11 +1,11 @@
-import { useState , useEffect } from 'react';
+import { useState  } from 'react';
 import {Link} from 'react-router-dom'
 import Dropdown from '../Dropdown/Dropdown';
 
 
 function Nav() {
 
-    const [isScrolled , SetIsScrolled]=useState(false);
+    const [isScrolled ]=useState(false);
     const [isOpen , setIsOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
