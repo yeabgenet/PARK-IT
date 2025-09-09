@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
+// In Login.tsx, update the interface
 interface LoginResponse {
   message: string;
   user?: {
@@ -9,6 +10,7 @@ interface LoginResponse {
     first_name: string;
     last_name: string;
     role: string | null;
+    is_superuser?: boolean; // Add this optional property
   };
 }
 
@@ -30,36 +32,49 @@ function Login() {
       });
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        username,
-        password: String(password)
-      };
-      console.log('Sending login request with:', payload);
-      const response = await axios.post<LoginResponse>('http://localhost:8000/api/login/', payload, {
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': axios.defaults.headers.common['X-CSRFToken'] },
-        withCredentials: true
-      });
-      console.log('Login response:', response.data);
-      if (response.data.message === 'Login successful') {
-        console.log('Redirecting to /');
-        navigate('/');
+  // In Login.tsx, modify the handleSubmit function
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  try {
+    const payload = {
+      username,
+      password: String(password)
+    };
+    console.log('Sending login request with:', payload);
+    const response = await axios.post<LoginResponse>('http://localhost:8000/api/login/', payload, {
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': axios.defaults.headers.common['X-CSRFToken'] },
+      withCredentials: true
+    });
+    console.log('Login response:', response.data);
+    if (response.data.message === 'Login successful' && response.data.user) {
+      // Redirect based on user role
+      const userRole = response.data.user.role;
+      const isSuperuser = response.data.user.is_superuser || false;
+      
+      console.log('User role:', userRole, 'Is superuser:', isSuperuser);
+      
+      if (isSuperuser || userRole === 'admin') {
+        navigate('/admin');
+      } else if (userRole === 'service provider') {
+        navigate('/service-provider');
       } else {
-        setError(response.data.message);
+        // For drivers and any other roles, go to the main page (driver dashboard)
+        navigate('/');
       }
-    } catch (err: any) {
-      console.error('Login error:', err.response?.status, err.response?.data, err.message);
-      setError(err.response?.data?.message || 'An error occurred. Please check your credentials and try again.');
+    } else {
+      setError(response.data.message || 'Login failed');
     }
-  };
+  } catch (err: any) {
+    console.error('Login error:', err.response?.status, err.response?.data, err.message);
+    setError(err.response?.data?.message || 'An error occurred. Please check your credentials and try again.');
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="w-full max-w-md p-6 sm:p-10 md:p-16 lg:pt-20 lg:pb-20 lg:pl-24 lg:pr-24 rounded-3xl border border-gray-300 shadow-xl bg-white relative">
         <div className="flex items-center mb-4 relative">
-          <img src="./public/images/logo" alt="logo" className="h-20 sm:h-24 absolute left-0" />
+          <img src="./images/logo.png" alt="logo" className="h-20 sm:h-24 absolute left-0" />
           <h1 className="text-2xl font-extrabold ml-24 z-10">PARK IT</h1>
         </div>
         <form onSubmit={handleSubmit}>

@@ -11,6 +11,7 @@ interface UserResponse {
   user: {
     username: string;
     role: string | null;
+    is_superuser?: boolean; // Make this optional
   };
 }
 
@@ -25,7 +26,24 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ allowedRoles, children }) =
           withCredentials: true,
         });
         const userRole = response.data.user?.role?.toLowerCase();
-        setIsAuthorized(userRole ? allowedRoles.includes(userRole) : false);
+        const isSuperuser = response.data.user?.is_superuser || false;
+        
+        // Check if user is admin (either by role or is_superuser)
+        const isAdmin = isSuperuser || userRole === 'admin';
+        
+        let isRoleAllowed = false;
+        
+        if (allowedRoles.includes('admin')) {
+          isRoleAllowed = isAdmin;
+        } else if (allowedRoles.includes('driver')) {
+          // For driver access, check if user is a driver OR if no specific role is set
+          isRoleAllowed = userRole === 'driver' || userRole === null || userRole === undefined;
+        } else {
+          // For other roles (service provider)
+          isRoleAllowed = userRole ? allowedRoles.includes(userRole) : false;
+        }
+        
+        setIsAuthorized(isRoleAllowed);
       } catch (err) {
         console.error('Error checking user role:', err);
         setIsAuthorized(false);

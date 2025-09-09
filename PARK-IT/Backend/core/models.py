@@ -1,7 +1,7 @@
 # core/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-
+from django.urls import reverse
 
 class Role(models.Model):
     """
@@ -84,32 +84,39 @@ class ServiceProvider(models.Model):
     country = models.CharField(max_length=100, null=True, blank=True)
     city = models.CharField(max_length=100, null=True, blank=True)
     address = models.CharField(max_length=255, null=True, blank=True)
-    terminal_picture = models.ImageField(upload_to='terminal_pics/', null=True, blank=True)  # Added
+     # Added
 
     def __str__(self):
         return f"Provider: {self.company_name}"
 
 
+# models.py
+# models.py - CHANGE THIS
+# core/models.py
 class ParkingLot(models.Model):
-    """
-    Represents a physical parking lot with its location and capacity.
-    This model now has its own distinct address fields.
-    """
     provider = models.ForeignKey(ServiceProvider, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
-    
-    # New fields for the parking lot's specific address
     country = models.CharField(max_length=100, null=True, blank=True)
     city = models.CharField(max_length=100, null=True, blank=True)
     address = models.CharField(max_length=255, null=True, blank=True)
-   
-    
     total_capacity = models.IntegerField()
-    profile_image_url = models.URLField(max_length=500, null=True, blank=True)
+    
+    # Replace ImageField with BinaryField
+    image_data = models.BinaryField(null=True, blank=True)  # stores the image bytes
+    image_mime_type = models.CharField(max_length=50, null=True, blank=True)  # e.g., 'image/jpeg'
 
     def __str__(self):
         return self.name
 
+    @property
+    def profile_image_url(self):
+        """
+        Returns the URL of an endpoint that serves this image from the database.
+        """
+        if self.image_data:
+            # You will need to create a view named 'parkinglot_image' (see below)
+            return reverse('parkinglot_image', kwargs={'pk': self.id})
+        return None
 
 class ParkingSpot(models.Model):
     """
@@ -124,12 +131,13 @@ class ParkingSpot(models.Model):
     lot = models.ForeignKey(ParkingLot, on_delete=models.CASCADE, related_name='spots')
     spot_number = models.CharField(max_length=50)
     is_reserved = models.BooleanField(default=False)
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES ,default='available')
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='available')
     image_url = models.URLField(max_length=500, null=True, blank=True)
-
+    # REMOVE THIS DUPLICATE FIELD - you already have image_url
+    # profile_image_url = models.URLField(max_length=500, null=True, blank=True)
+    
     def __str__(self):
         return f"{self.lot.name} - Spot {self.spot_number}"
-
 
 class ParkingSession(models.Model):
     """

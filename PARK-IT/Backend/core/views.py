@@ -1,3 +1,4 @@
+# core/views.py - CLEANED UP
 from django.shortcuts import render
 from django.middleware.csrf import get_token
 from rest_framework import viewsets
@@ -6,28 +7,51 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate, login
 from .models import ParkingLot, ParkingSpot, Car, Driver, ServiceProvider, User, Role
-from .serializers import ParkingLotSerializer, ParkingSpotSerializer, CarSerializer, DriverSerializer, ServiceProviderSerializer
-
-from core.models import User, Role
+from .serializers import ParkingLotSerializer,  CarSerializer, DriverSerializer, ServiceProviderSerializer
 import logging
-
-
-
+from rest_framework.decorators import action, api_view # <-- ADDED api_view here, alongside action
 
 logger = logging.getLogger(__name__)
+
+# core/views.py
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from .models import ParkingLot
+
+def parkinglot_image(request, pk):
+    lot = get_object_or_404(ParkingLot, pk=pk)
+    if lot.image_data:
+        return HttpResponse(lot.image_data, content_type=lot.image_mime_type)
+    return HttpResponse(status=404)
+
 
 
 def index(request):
     return render(request, 'index.html')
 
+@api_view(['GET'])
+def get_csrf_token(request):
+    """
+    Function-based view to get CSRF token.
+    Your frontend uses CsrfTokenView (class-based) at /api/csrf/,
+    so this get_csrf_token might be redundant or for a different purpose.
+    """
+    return Response({'csrfToken': get_token(request)})
 
 class UserView(APIView):
     def get(self, request, *args, **kwargs):
         if request.user.is_authenticated:
+            # Determine user role - check both role field and superuser status
+            user_role = None
+            if request.user.role:
+                user_role = request.user.role.role_name.lower()
+            elif request.user.is_superuser:
+                user_role = 'admin'
             return Response({
                 'user': {
                     'username': request.user.username,
-                    'role': request.user.role.role_name.lower() if request.user.role else None
+                    'role': user_role,
+                    'is_superuser': request.user.is_superuser,
                 }
             }, status=status.HTTP_200_OK)
         else:
@@ -39,10 +63,44 @@ class ParkingLotViewSet(viewsets.ModelViewSet):
     queryset = ParkingLot.objects.all()
     serializer_class = ParkingLotSerializer
 
+    def get_queryset(self):
+        user = self.request.user
+        logger.debug(f"User: {user}, Authenticated: {user.is_authenticated}")
+        if user.is_authenticated:
+            logger.debug(f"Superuser: {user.is_superuser}, Role: {user.role.role_name if user.role else 'None'}")
+            if user.is_superuser:
+                logger.debug("Returning all parking lots for superuser")
+                return ParkingLot.objects.all()
+            if hasattr(user, 'serviceprovider') and user.role and user.role.role_name.lower() == 'service provider':
+                logger.debug(f"ServiceProvider: {user.serviceprovider}, Parking Lots: {ParkingLot.objects.filter(provider=user.serviceprovider)}")
+                return ParkingLot.objects.filter(provider=user.serviceprovider)
+        logger.debug("Returning empty queryset for unauthenticated user")
+        return ParkingLot.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.is_authenticated and hasattr(user, 'serviceprovider'):
+            serializer.save(provider=user.serviceprovider)
+        else:
+            raise serializers.ValidationError("User is not a service provider")
+
+    @action(detail=False, methods=['get'])
+    def images(self, request):
+        queryset = self.get_queryset()
+        # Correctly using 'profile_image'
+        image_urls = [request.build_absolute_uri(lot.profile_image.url) for lot in queryset if lot.profile_image]
+        return Response(image_urls)
+
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
+'''
 class ParkingSpotViewSet(viewsets.ModelViewSet):
     queryset = ParkingSpot.objects.all()
     serializer_class = ParkingSpotSerializer
-
+'''
 class DriverRegistrationView(APIView):
     def post(self, request, *args, **kwargs):
         serializer = DriverSerializer(data=request.data)
@@ -67,10 +125,16 @@ class LoginView(APIView):
     def post(self, request, *args, **kwargs):
         username = request.data.get('username')
         password = request.data.get('password')
-        logger.debug(f"Attempting to authenticate user: {username}, password type: {type(password)}")
+        logger.debug(f"Attempting to authenticate user: {username}")
         user = authenticate(request, username=username, password=password)
-        logger.debug(f"Authentication result: {user}")
         if user is not None:
+            # Determine user role
+            user_role = None
+            if user.role:
+                user_role = user.role.role_name.lower()
+            elif user.is_superuser:
+                user_role = 'admin'
+            logger.debug(f"User authenticated: {user.username}, Role: {user_role}, Superuser: {user.is_superuser}")
             login(request, user)
             return Response({
                 'message': 'Login successful',
@@ -78,7 +142,8 @@ class LoginView(APIView):
                     'username': user.username,
                     'first_name': user.first_name,
                     'last_name': user.last_name,
-                    'role': user.role.role_name.lower() if user.role else None
+                    'role': user_role,
+                    'is_superuser': user.is_superuser
                 }
             }, status=status.HTTP_200_OK)
         else:
@@ -101,7 +166,7 @@ class RegisterDriverView(APIView):
         city = request.data.get('city')
         address = request.data.get('address')
         license_number = request.data.get('license_number')
-        license_plate = request.data.get('license_plate')  # Matches UserForm.tsx
+        license_plate = request.data.get('license_plate')
         profile_picture = request.FILES.get('profile_picture')
         role_name = request.data.get('role', 'Driver').lower()
 
@@ -197,7 +262,7 @@ class RegisterServiceProviderView(APIView):
         address = request.data.get('address')
         company_name = request.data.get('company_name')
         contact_person = request.data.get('contact_person')
-        terminal_picture = request.FILES.get('terminal_picture')
+        profile_picture = request.FILES.get('profile_picture')
         role_name = request.data.get('role', 'Service Provider').lower()
 
         logger.debug(f"Registering service provider: {username}, email: {email}, role: {role_name}")
@@ -237,7 +302,8 @@ class RegisterServiceProviderView(APIView):
                 gender=gender,
                 role=role
             )
-            user.profile_picture = terminal_picture
+            if profile_picture:
+                user.profile_picture = profile_picture
             user.is_active = True
             user.save()
 
@@ -249,8 +315,7 @@ class RegisterServiceProviderView(APIView):
                 city=city,
                 address=address,
                 company_name=company_name,
-                contact_person=contact_person,
-                terminal_picture=terminal_picture
+                contact_person=contact_person
             )
 
             login(request, user)

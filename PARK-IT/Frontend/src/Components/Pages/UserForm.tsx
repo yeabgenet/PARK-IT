@@ -38,7 +38,7 @@ interface ServiceProviderData {
   country: string;
   city: string;
   address: string;
-  terminal_picture: File | null;
+  
 }
 
 interface RegisterResponse {
@@ -107,7 +107,7 @@ function UserForm() {
     country: '',
     city: '',
     address: '',
-    terminal_picture: null,
+  
   });
 
   useEffect(() => {
@@ -190,7 +190,7 @@ function UserForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-
+  
     const formData = new FormData();
     Object.entries(userData).forEach(([key, value]) => {
       if (value !== null && key !== 'profile_picture') {
@@ -200,28 +200,43 @@ function UserForm() {
     if (userData.profile_picture) {
       formData.append('profile_picture', userData.profile_picture);
     }
-
+  
     try {
       let response;
       if (selectedRole === 'Driver') {
         Object.entries(driverData).forEach(([key, value]) => {
-          formData.append(key, value.toString());
+          if (value !== '' && value !== 0) {
+            formData.append(key, value.toString());
+          }
         });
         formData.append('role', 'Driver');
+        
+        // Debug: Log what's being sent
+        for (let [key, value] of formData.entries()) {
+          console.log('Driver form data:', key, value);
+        }
+        
         response = await axios.post<RegisterResponse>('http://localhost:8000/api/register/driver/', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
           withCredentials: true,
         });
       } else if (selectedRole === 'Service Provider') {
+        // Debug: Check what's in serviceProviderData
+        console.log('Service Provider data:', serviceProviderData);
+        
         Object.entries(serviceProviderData).forEach(([key, value]) => {
-          if (value !== null && key !== 'terminal_picture') {
+          if (value !== '' && value !== 0) {
             formData.append(key, value.toString());
           }
         });
-        if (serviceProviderData.terminal_picture) {
-          formData.append('terminal_picture', serviceProviderData.terminal_picture);
-        }
+        
         formData.append('role', 'Service Provider');
+        
+        // Debug: Log what's being sent
+        for (let [key, value] of formData.entries()) {
+          console.log('Service Provider form data:', key, value);
+        }
+        
         response = await axios.post<RegisterResponse>('http://localhost:8000/api/register/service-provider/', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
           withCredentials: true,
@@ -230,8 +245,9 @@ function UserForm() {
         setErrorMessage('Please select a role.');
         return;
       }
-
+  
       console.log('Register response:', response.data);
+      
       if (response.data.message === 'User created successfully') {
         const role = response.data.user?.role?.toLowerCase();
         console.log('Redirecting to:', role === 'service provider' ? '/service-provider' : '/');
@@ -460,11 +476,11 @@ function UserForm() {
                 <>
                   <div className="lg:flex lg:space-x-14 sm:block">
                     <div className="lg:w-1/2 sm:w-100%">
-                      <label className="block text-base font-medium text-neutral-900 mb-1">Terminal Name *</label>
+                      <label className="block text-base font-medium text-neutral-900 mb-1">Company Name *</label>
                       <input
                         className="w-full border border-gray-300 rounded-md px-4 py-2"
                         name="company_name"
-                        placeholder="Parking Terminal Name"
+                        placeholder="Company Name"
                         value={serviceProviderData.company_name}
                         onChange={handleServiceProviderChange}
                         required
@@ -481,20 +497,6 @@ function UserForm() {
                         required
                       />
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-base font-medium text-neutral-900 mb-1">Terminal Picture</label>
-                    <input
-                      className="w-1/2 border border-gray-300 rounded-md px-4 py-10"
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) =>
-                        setServiceProviderData({
-                          ...serviceProviderData,
-                          terminal_picture: e.target.files ? e.target.files[0] : null,
-                        })
-                      }
-                    />
                   </div>
                 </>
               )}
