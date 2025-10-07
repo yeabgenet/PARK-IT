@@ -1,6 +1,6 @@
 import { useState  } from 'react';
 import {Link} from 'react-router-dom'
-import Dropdown from '../Dropdown/Dropdown';
+import SpDropdown from '../SpDropdown/SpDropdown';
 
 
 function SpNav() {
@@ -63,6 +63,12 @@ function SpNav() {
           </li>
 
           <li>
+            <Link to='/AddSpot' className='text-base lg:hidden opacity-70 hover:opacity-100 md:opacity-100 transition px-4 py-2'>
+              .Add Spot
+            </Link>
+          </li>
+
+          <li>
             
           </li>
 
@@ -86,7 +92,7 @@ function SpNav() {
         aria-label='Close modal' >
         <i className={`ri-menu-line text-2xl transition ${isModalOpen ? 'hidden' : 'block'}`}></i>
         <i className={`ri-close-line text-2xl transition ${isModalOpen? 'block' : 'hidden'}`}>
-            <Dropdown></Dropdown>
+            <SpDropdown></SpDropdown>
           </i>
       </button>
            

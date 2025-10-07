@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'core.apps.CoreConfig',
+    
 ]
 
 MIDDLEWARE = [
@@ -79,6 +80,7 @@ DATABASES = {
         'PASSWORD': 'yg1994#codetillyoudie',
         'HOST': 'localhost',
         'PORT': '5432',
+        'CONN_MAX_AGE': 600,
     }
 }
 
@@ -133,3 +135,12 @@ LOGGING = {
         },
     },
 }
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+    }
+}
+
+RECOMMENDATION_CACHE_TIMEOUT = 300
