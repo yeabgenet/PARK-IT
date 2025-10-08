@@ -13,6 +13,9 @@ import Add from './Components/SpPages/Add';
 import Spterminals from './Components/SpTerminal/Spterminals';
 import AddSpot from './Components/AddSpot/Addspot';
 import TerminalSpotsPage from './Components/SpPages/TerminalSpotsPage';
+import SpProfile from './Components/SpPages/SpProfile';
+import VerifyParkingLot from './Components/SpPages/VerifyParkingLot';
+
 
 const AppContent = () => {
   const location = useLocation();
@@ -103,6 +106,10 @@ const AppContent = () => {
             </PrivateRoute>
           }
         />
+
+        <Route path="/sp-profile" element={<SpProfile />} />
+        <Route path="/verify-lot/:lotId" element={<VerifyParkingLot />} />
+        
       </Routes>
     </>
   );

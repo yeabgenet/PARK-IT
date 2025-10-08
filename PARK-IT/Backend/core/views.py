@@ -675,3 +675,118 @@ class NearbyParkingLotsView(APIView):
             'search_radius_km': radius_km,
             'nearby_parking_lots': serializer.data
         })
+
+    
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.http import HttpRequest
+from typing import Dict, Any
+
+# Add this temporary test view to debug
+# Add this to your views.py
+class ServiceProviderProfileView(APIView):
+    def get(self, request):
+        """
+        Get ServiceProvider profile for the currently authenticated user
+        """
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Not authenticated'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        try:
+            service_provider = ServiceProvider.objects.get(user=request.user)
+            
+            # Get parking lot statistics
+            parking_lots = ParkingLot.objects.filter(provider=service_provider)
+            total_spots = ParkingSpot.objects.filter(lot__in=parking_lots).count()
+            available_spots = ParkingSpot.objects.filter(
+                lot__in=parking_lots, 
+                status='available', 
+                is_reserved=False
+            ).count()
+            
+            profile_data = {
+                'first_name': request.user.first_name,
+                'last_name': request.user.last_name,
+                'email': request.user.email,
+                'gender': request.user.gender,
+                'profile_picture': request.build_absolute_uri(request.user.profile_picture.url) if request.user.profile_picture else None,
+                'company_name': service_provider.company_name,
+                'contact_person': service_provider.contact_person,
+                'phone_number': service_provider.phone_number,
+                'age': service_provider.age,
+                'country': service_provider.country,
+                'city': service_provider.city,
+                'address': service_provider.address,
+                'parking_lots_count': parking_lots.count(),
+                'total_spots_count': total_spots,
+                'available_spots_count': available_spots,
+            }
+            
+            return Response(profile_data)
+            
+        except ServiceProvider.DoesNotExist:
+            return Response(
+                {'error': 'User is not a service provider'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+# Add to your views.py
+class ParkingLotVerificationView(APIView):
+    """
+    Verify parking lot by adding coordinates
+    """
+    def patch(self, request, pk):
+        if not request.user.is_authenticated:
+            return Response({'error': 'Not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            parking_lot = ParkingLot.objects.get(id=pk, provider__user=request.user)
+            
+            # Extract verification data
+            latitude = request.data.get('latitude')
+            longitude = request.data.get('longitude')
+            is_verified = request.data.get('is_verified', False)
+            
+            # Validate coordinates
+            if latitude is not None and longitude is not None:
+                try:
+                    latitude = float(latitude)
+                    longitude = float(longitude)
+                    
+                    if not (-90 <= latitude <= 90):
+                        return Response(
+                            {'error': 'Latitude must be between -90 and 90'}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    if not (-180 <= longitude <= 180):
+                        return Response(
+                            {'error': 'Longitude must be between -180 and 180'}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    parking_lot.latitude = latitude
+                    parking_lot.longitude = longitude
+                    
+                except (TypeError, ValueError):
+                    return Response(
+                        {'error': 'Invalid coordinate format'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            parking_lot.is_verified = is_verified
+            parking_lot.save()
+            
+            serializer = ParkingLotSerializer(parking_lot, context={'request': request})
+            return Response(serializer.data)
+            
+        except ParkingLot.DoesNotExist:
+            return Response(
+                {'error': 'Parking lot not found or access denied'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )

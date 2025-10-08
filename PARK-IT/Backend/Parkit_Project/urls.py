@@ -21,7 +21,9 @@ from core.views import (
     SpotHistoryViewSet,
     CheckDriverView, ParkingSpotStatusUpdateView,
     LocationBasedRecommendationView, 
-    NearbyParkingLotsView
+    NearbyParkingLotsView , 
+    ServiceProviderProfileView,
+    ParkingLotVerificationView
     
     # get_csrf_token # <--- REMOVE THIS, or import it if you actually need this separate function view
 )
@@ -56,6 +58,8 @@ urlpatterns = [
     path('api/parking-spots/<int:pk>/status/', ParkingSpotStatusUpdateView.as_view(), name='parking-spot-status-update'),
     path('api/recommendations/spots/', LocationBasedRecommendationView.as_view(), name='spot-recommendations'),
     path('api/recommendations/lots/', NearbyParkingLotsView.as_view(), name='lot-recommendations'),
+    path('api/service-provider/profile/', ServiceProviderProfileView.as_view(), name='service-provider-profile'),
+    path('api/parking-lots/<int:pk>/verify/', ParkingLotVerificationView.as_view(), name='parking-lot-verify'),
 ]
 
 # Serve media and static files ONLY in development

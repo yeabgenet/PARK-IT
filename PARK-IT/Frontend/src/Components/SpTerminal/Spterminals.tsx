@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
+
 interface Terminal {
     id: number;
     name: string;
@@ -9,6 +10,7 @@ interface Terminal {
     city: string;
     country: string;
     profile_image_url: string | null;
+    is_verified: boolean; // Make sure this field exists
 }
 
 interface CsrfResponse {
@@ -57,6 +59,12 @@ function Spterminals() {
 
     const handleTerminalClick = (terminalId: number) => {
         navigate(`/terminal/${terminalId}/spots`);
+    };
+
+    // Add this function to handle verify button clicks
+    const handleVerifyClick = (e: React.MouseEvent, terminalId: number) => {
+        e.stopPropagation(); // This stops the event from bubbling up to the card
+        navigate(`/verify-lot/${terminalId}`);
     };
 
     if (loading) {
@@ -115,8 +123,6 @@ function Spterminals() {
                     </button>
                 </div>
 
-                
-
                 {terminals.length === 0 ? (
                     <div className="bg-white rounded-lg shadow-md p-8 text-center">
                         <h3 className="text-lg font-medium text-gray-900 mb-2">No terminals yet</h3>
@@ -166,10 +172,30 @@ function Spterminals() {
                                         <p className="text-gray-600 text-sm mt-1">
                                             Capacity: {terminal.total_capacity} cars
                                         </p>
+                                        {/* Verification Status */}
+                                        <div className="mt-2">
+                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                terminal.is_verified 
+                                                    ? 'bg-green-100 text-green-800' 
+                                                    : 'bg-yellow-100 text-yellow-800'
+                                            }`}>
+                                                {terminal.is_verified ? '✓ Verified' : '📍 Needs Verification'}
+                                            </span>
+                                        </div>
                                     </div>
 
-                                    <div className="bg-black text-white px-5 py-2 rounded-full text-sm group-hover:bg-gray-800 transition-colors duration-300">
-                                        Visit us
+                                    <div className="flex flex-col gap-2">
+                                        {!terminal.is_verified && (
+                                            <button
+                                                onClick={(e) => handleVerifyClick(e, terminal.id)}
+                                                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-full text-sm font-medium transition-colors"
+                                            >
+                                                Verify Location
+                                            </button>
+                                        )}
+                                        <div className="bg-black text-white px-5 py-2 rounded-full text-sm group-hover:bg-gray-800 transition-colors duration-300 text-center">
+                                            Visit us
+                                        </div>
                                     </div>
                                 </div>
                             </div>

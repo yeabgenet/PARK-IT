@@ -6,7 +6,7 @@ function Dropdown() {
     <>
     <div className='flex flex-col dropDownMenu'>
         <ul className=' flex flex-col gap-4 w-100% text-xl text-white items-start'>
-            <Link to='/Profile'>
+        <Link to="/sp-profile">
             <li className='text-base '>
                . Profile
             </li>
@@ -26,6 +26,10 @@ function Dropdown() {
                . Add Spot
             </li>
             </Link>
+
+            
+
+           
 
         </ul>
     </div>
