@@ -43,6 +43,11 @@ function SpNav() {
               .Requests
             </Link>
           </li>
+          <li>
+            <Link to='/service-provider/camera-detection' className='text-base opacity-70 hover:opacity-100 md:opacity-100 transition px-4 py-2'>
+              .Camera Detection
+            </Link>
+          </li>
 
           <li>
             <Link to='/SpProfile' className='text-base lg:hidden opacity-70 hover:opacity-100 md:opacity-100 transition px-4 py-2'>

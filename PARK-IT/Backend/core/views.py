@@ -3,6 +3,8 @@ from django.shortcuts import render, get_object_or_404
 from django.middleware.csrf import get_token
 from django.http import HttpResponse
 from django.utils import timezone
+from django.core.mail import send_mail
+from django.conf import settings
 from rest_framework import viewsets, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -11,6 +13,8 @@ from rest_framework.decorators import action, api_view
 from django.contrib.auth import authenticate, login
 import math
 import logging
+import random
+from datetime import timedelta
 
 # Safe geopy import with fallback
 try:
@@ -42,7 +46,10 @@ except ImportError:
         
         return Distance(round(c * r, 2))
 
-from .models import ParkingLot, ParkingSpot, Car, Driver, ServiceProvider, User, Role, SpotHistory, ParkingSpotHistory
+from .models import (
+    ParkingLot, ParkingSpot, Car, Driver, ServiceProvider, User, Role, 
+    SpotHistory, ParkingSpotHistory, Reservation, Notification, SpotDetection
+)
 from .serializers import (
     ParkingLotSerializer,
     CarSerializer,
@@ -50,7 +57,10 @@ from .serializers import (
     ServiceProviderSerializer,
     ParkingSpotSerializer,
     SpotHistorySerializer,
-    ParkingSpotRecommendationSerializer
+    ParkingSpotRecommendationSerializer,
+    ReservationSerializer,
+    NotificationSerializer,
+    SpotDetectionSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +99,7 @@ class UserView(APIView):
                 user_role = 'admin'
             return Response({
                 'user': {
+                    'id': request.user.id,
                     'username': request.user.username,
                     'role': user_role,
                     'is_superuser': request.user.is_superuser,
@@ -135,21 +146,7 @@ class ParkingLotViewSet(viewsets.ModelViewSet):
         context.update({"request": self.request})
         return context
 
-class DriverRegistrationView(APIView):
-    def post(self, request, *args, **kwargs):
-        serializer = DriverSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Driver registered successfully!"}, status=status.HTTP_201_CREATED)
-        return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-
-class ServiceProviderRegistrationView(APIView):
-    def post(self, request, *args, **kwargs):
-        serializer = ServiceProviderSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Service Provider registered successfully!"}, status=status.HTTP_201_CREATED)
-        return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+# Old serializer-based registration views removed - now using RegisterDriverView and RegisterServiceProviderView with email verification
 
 class CarViewSet(viewsets.ModelViewSet):
     queryset = Car.objects.all()
@@ -181,6 +178,7 @@ class LoginView(APIView):
             }, status=status.HTTP_200_OK)
         else:
             logger.debug(f"Invalid credentials for user: {username}")
+            logger.debug(f"Request data: {request.data}")
             return Response({
                 'message': 'Invalid credentials'
             }, status=status.HTTP_401_UNAUTHORIZED)
@@ -204,6 +202,7 @@ class RegisterDriverView(APIView):
         role_name = request.data.get('role', 'Driver').lower()
 
         logger.debug(f"Registering driver: {username}, email: {email}, role: {role_name}")
+        logger.debug(f"Request data: {request.data}")
 
         if not all([username, email, password, phone_number, age, country, city, address, license_number, license_plate]):
             logger.debug(f"Missing required fields: username={username}, email={email}, phone_number={phone_number}, age={age}, country={country}, city={city}, address={address}, license_number={license_number}, license_plate={license_plate}")
@@ -237,6 +236,10 @@ class RegisterDriverView(APIView):
 
         try:
             role, _ = Role.objects.get_or_create(role_name='Driver')
+            
+            # Generate 6-digit verification code
+            verification_code = str(random.randint(100000, 999999))
+            
             user = User.objects.create_user(
                 username=username,
                 email=email,
@@ -247,7 +250,9 @@ class RegisterDriverView(APIView):
                 role=role
             )
             user.profile_picture = profile_picture
-            user.is_active = True
+            user.is_active = False  # User must verify email first
+            user.verification_code = verification_code
+            user.verification_code_created_at = timezone.now()
             user.save()
 
             driver = Driver.objects.create(
@@ -265,14 +270,24 @@ class RegisterDriverView(APIView):
                 license_plate=license_plate
             )
 
-            login(request, user)
-            logger.info(f"Driver {username} created and logged in successfully")
+            # Send verification email
+            try:
+                send_mail(
+                    subject='ParkIt - Email Verification Code',
+                    message=f'Your verification code is: {verification_code}\n\nThis code will expire in 10 minutes.',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                logger.info(f"Verification email sent to {email}")
+            except Exception as email_error:
+                logger.error(f"Failed to send verification email: {str(email_error)}")
+
+            logger.info(f"Driver {username} created, awaiting email verification")
             return Response({
-                'message': 'User created successfully',
-                'user': {
-                    'username': user.username,
-                    'role': role.role_name.lower()
-                }
+                'message': 'Registration successful. Please check your email for verification code.',
+                'email': email,
+                'requires_verification': True
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f"Error creating driver: {str(e)}")
@@ -301,31 +316,26 @@ class RegisterServiceProviderView(APIView):
         logger.debug(f"Registering service provider: {username}, email: {email}, role: {role_name}")
 
         if not all([username, email, password, phone_number, age, country, city, address, company_name, contact_person]):
-            logger.debug(f"Missing required fields: username={username}, email={email}, phone_number={phone_number}, age={age}, country={country}, city={city}, address={address}, company_name={company_name}, contact_person={contact_person}")
+            logger.debug(f"Missing required fields")
             return Response({
                 'message': 'All fields are required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(username=username).exists():
-            logger.debug(f"Username already exists: {username}")
-            return Response({
-                'message': 'Username already exists'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(email=email).exists():
-            logger.debug(f"Email already exists: {email}")
-            return Response({
-                'message': 'Email already exists'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
         if ServiceProvider.objects.filter(phone_number=phone_number).exists():
-            logger.debug(f"Phone number already exists: {phone_number}")
-            return Response({
-                'message': 'Phone number already exists'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'message': 'Phone number already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             role, _ = Role.objects.get_or_create(role_name='Service Provider')
+            
+            # Generate 6-digit verification code
+            verification_code = str(random.randint(100000, 999999))
+            
             user = User.objects.create_user(
                 username=username,
                 email=email,
@@ -337,7 +347,9 @@ class RegisterServiceProviderView(APIView):
             )
             if profile_picture:
                 user.profile_picture = profile_picture
-            user.is_active = True
+            user.is_active = False
+            user.verification_code = verification_code
+            user.verification_code_created_at = timezone.now()
             user.save()
 
             ServiceProvider.objects.create(
@@ -351,14 +363,24 @@ class RegisterServiceProviderView(APIView):
                 contact_person=contact_person
             )
 
-            login(request, user)
-            logger.info(f"Service Provider {username} created and logged in successfully")
+            # Send verification email
+            try:
+                send_mail(
+                    subject='ParkIt - Email Verification Code',
+                    message=f'Your verification code is: {verification_code}\n\nThis code will expire in 10 minutes.',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                logger.info(f"Verification email sent to {email}")
+            except Exception as email_error:
+                logger.error(f"Failed to send verification email: {str(email_error)}")
+
+            logger.info(f"Service Provider {username} created, awaiting email verification")
             return Response({
-                'message': 'User created successfully',
-                'user': {
-                    'username': user.username,
-                    'role': role.role_name.lower()
-                }
+                'message': 'Registration successful. Please check your email for verification code.',
+                'email': email,
+                'requires_verification': True
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f"Error creating service provider: {str(e)}")
@@ -370,7 +392,16 @@ class CsrfTokenView(APIView):
     def get(self, request, *args, **kwargs):
         token = get_token(request)
         logger.debug(f"CSRF token generated: {token}")
-        return Response({'csrfToken': token})
+        response = Response({'csrfToken': token})
+        response.set_cookie(
+            'csrftoken',
+            token,
+            max_age=31449600,  # 1 year
+            httponly=False,
+            samesite='Lax',
+            secure=False
+        )
+        return response
 
 class TerminalListView(APIView):
     def get(self, request):
@@ -392,6 +423,11 @@ class DriverViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Driver.objects.all()  # Adjust permissions as needed
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
+
 class ParkingSpotViewSet(viewsets.ModelViewSet):
     queryset = ParkingSpot.objects.all()
     serializer_class = ParkingSpotSerializer
@@ -406,6 +442,11 @@ class ParkingSpotViewSet(viewsets.ModelViewSet):
             if lot_id:
                 queryset = queryset.filter(lot_id=lot_id)
         return queryset
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -790,3 +831,450 @@ class ParkingLotVerificationView(APIView):
                 {'error': 'Parking lot not found or access denied'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+# ============= NEW VIEWS FOR RESERVATION, NOTIFICATION, AND YOLO =============
+
+class ReservationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing parking reservations
+    """
+    serializer_class = ReservationSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Reservation.objects.none()
+        
+        # Drivers see their own reservations
+        if hasattr(user, 'driver'):
+            return Reservation.objects.filter(driver=user.driver)
+        
+        # Service providers see reservations for their parking lots
+        if hasattr(user, 'serviceprovider'):
+            lot_ids = ParkingLot.objects.filter(
+                provider=user.serviceprovider
+            ).values_list('id', flat=True)
+            return Reservation.objects.filter(spot__lot_id__in=lot_ids)
+        
+        # Admins see all
+        if user.is_superuser:
+            return Reservation.objects.all()
+        
+        return Reservation.objects.none()
+    
+    def create(self, request):
+        """Create a new reservation"""
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if not hasattr(request.user, 'driver'):
+            return Response(
+                {'error': 'Only drivers can make reservations'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        spot_id = request.data.get('spot')
+        expected_duration = request.data.get('expected_duration_hours', 1.0)
+        
+        try:
+            spot = ParkingSpot.objects.get(id=spot_id)
+            
+            # Check if spot is available
+            if spot.status != 'available' or spot.is_reserved:
+                return Response(
+                    {'error': 'Parking spot is not available'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get driver's car
+            driver = request.user.driver
+            car = Car.objects.filter(driver=driver).first()
+            
+            if not car:
+                return Response(
+                    {'error': 'Driver must have a registered car'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create reservation
+            reservation = Reservation.objects.create(
+                spot=spot,
+                driver=driver,
+                car=car,
+                price_per_hour=spot.price_per_hour,
+                expected_duration_hours=expected_duration,
+                status='pending'
+            )
+            
+            # Update spot status
+            spot.status = 'reserved'
+            spot.is_reserved = True
+            spot.save()
+            
+            # Create notification for service provider
+            Notification.objects.create(
+                recipient=spot.lot.provider.user,
+                notification_type='reservation',
+                title='New Parking Reservation',
+                message=f'{driver.user.username} reserved spot {spot.spot_number} at {spot.lot.name}',
+                reservation=reservation,
+                parking_lot=spot.lot,
+                parking_spot=spot
+            )
+            
+            serializer = self.get_serializer(reservation)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except ParkingSpot.DoesNotExist:
+            return Response(
+                {'error': 'Parking spot not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        """Activate a reservation when driver arrives"""
+        reservation = self.get_object()
+        
+        if reservation.status != 'pending':
+            return Response(
+                {'error': 'Only pending reservations can be activated'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reservation.activate()
+        
+        # Notify service provider
+        Notification.objects.create(
+            recipient=reservation.spot.lot.provider.user,
+            notification_type='arrival',
+            title='Driver Arrived',
+            message=f'{reservation.driver.user.username} has arrived at spot {reservation.spot.spot_number}',
+            reservation=reservation,
+            parking_lot=reservation.spot.lot,
+            parking_spot=reservation.spot
+        )
+        
+        serializer = self.get_serializer(reservation)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """Complete a reservation when driver leaves"""
+        reservation = self.get_object()
+        
+        if reservation.status != 'active':
+            return Response(
+                {'error': 'Only active reservations can be completed'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reservation.complete()
+        
+        # Notify service provider
+        Notification.objects.create(
+            recipient=reservation.spot.lot.provider.user,
+            notification_type='departure',
+            title='Driver Departed',
+            message=f'{reservation.driver.user.username} has left spot {reservation.spot.spot_number}. Total: ${reservation.total_cost}',
+            reservation=reservation,
+            parking_lot=reservation.spot.lot,
+            parking_spot=reservation.spot
+        )
+        
+        serializer = self.get_serializer(reservation)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Cancel a reservation"""
+        reservation = self.get_object()
+        
+        if reservation.status in ['completed', 'cancelled']:
+            return Response(
+                {'error': 'Reservation cannot be cancelled'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reservation.status = 'cancelled'
+        reservation.spot.status = 'available'
+        reservation.spot.is_reserved = False
+        reservation.spot.save()
+        reservation.save()
+        
+        # Notify service provider
+        Notification.objects.create(
+            recipient=reservation.spot.lot.provider.user,
+            notification_type='cancellation',
+            title='Reservation Cancelled',
+            message=f'{reservation.driver.user.username} cancelled reservation for spot {reservation.spot.spot_number}',
+            reservation=reservation,
+            parking_lot=reservation.spot.lot,
+            parking_spot=reservation.spot
+        )
+        
+        serializer = self.get_serializer(reservation)
+        return Response(serializer.data)
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing notifications
+    """
+    serializer_class = NotificationSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return Notification.objects.none()
+        
+        return Notification.objects.filter(recipient=user)
+    
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """Mark a notification as read"""
+        notification = self.get_object()
+        notification.mark_as_read()
+        serializer = self.get_serializer(notification)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        """Mark all notifications as read"""
+        notifications = self.get_queryset().filter(is_read=False)
+        for notification in notifications:
+            notification.mark_as_read()
+        return Response({'message': f'{notifications.count()} notifications marked as read'})
+    
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Get count of unread notifications"""
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response({'unread_count': count})
+
+
+class YOLODetectionView(APIView):
+    """
+    API endpoint for YOLO-based parking spot detection
+    """
+    
+    def post(self, request):
+        """
+        Detect if a parking spot is occupied using YOLO
+        Expects: {
+            "spot_id": int,
+            "image": base64_encoded_image
+        }
+        """
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        spot_id = request.data.get('spot_id')
+        image_data = request.data.get('image')
+        
+        if not spot_id or not image_data:
+            return Response(
+                {'error': 'spot_id and image are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            spot = ParkingSpot.objects.get(id=spot_id)
+            
+            # Import and use YOLO service
+            try:
+                from .yolo_service import get_detector
+                detector = get_detector()
+            except ImportError as ie:
+                logger.error(f"Failed to import YOLO service: {str(ie)}")
+                return Response(
+                    {
+                        'error': 'YOLO detection service not available',
+                        'details': 'Missing required dependencies (opencv-python, pillow). Please install them.',
+                        'fallback': 'Using manual status update instead'
+                    }, 
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            
+            # Perform detection
+            result = detector.detect_from_base64(image_data)
+            
+            # Check if detection had errors
+            if 'error' in result:
+                logger.error(f"Detection error: {result['error']}")
+                return Response(
+                    {
+                        'error': 'Detection processing failed',
+                        'details': result.get('error', 'Unknown error'),
+                        'note': result.get('note', '')
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Save detection result
+            detection = SpotDetection.objects.create(
+                spot=spot,
+                is_occupied=result.get('is_occupied', False),
+                confidence=result.get('confidence', 0.0)
+            )
+            
+            # Update spot status based on detection
+            old_status = spot.status
+            confidence_threshold = 0.6  # Lowered threshold slightly
+            
+            is_occupied = result.get('is_occupied', False)
+            confidence = result.get('confidence', 0.0)
+            
+            if is_occupied and confidence > confidence_threshold:
+                if spot.status == 'available':
+                    spot.status = 'occupied'
+                    spot.save()
+            elif not is_occupied and confidence > confidence_threshold:
+                if spot.status == 'occupied':
+                    spot.status = 'available'
+                    spot.save()
+            
+            serializer = SpotDetectionSerializer(detection)
+            return Response({
+                'success': True,
+                'detection': serializer.data,
+                'previous_status': old_status,
+                'updated_spot_status': spot.status,
+                'method': result.get('method', 'yolo'),
+                'note': result.get('note', ''),
+                'processed_image': result.get('processed_image', None)
+            })
+            
+        except ParkingSpot.DoesNotExist:
+            return Response(
+                {'error': 'Parking spot not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error in YOLO detection: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return Response(
+                {
+                    'error': 'Detection failed',
+                    'details': str(e),
+                    'type': type(e).__name__
+                }, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ServiceProviderHistoryView(APIView):
+    """
+    Get parking history and analytics for service providers
+    """
+    
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        if not hasattr(request.user, 'serviceprovider'):
+            return Response(
+                {'error': 'Only service providers can access this'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        provider = request.user.serviceprovider
+        
+        # Get provider's parking lots
+        lots = ParkingLot.objects.filter(provider=provider)
+        lot_ids = lots.values_list('id', flat=True)
+        
+        # Get reservations
+        reservations = Reservation.objects.filter(
+            spot__lot_id__in=lot_ids
+        ).select_related('spot', 'driver__user', 'car')
+        
+        # Calculate statistics
+        total_reservations = reservations.count()
+        active_reservations = reservations.filter(status='active').count()
+        completed_reservations = reservations.filter(status='completed').count()
+        total_revenue = sum(
+            r.total_cost for r in reservations.filter(status='completed', total_cost__isnull=False)
+        )
+        
+        # Get recent history
+        recent_reservations = ReservationSerializer(
+            reservations.order_by('-created_at')[:20], 
+            many=True,
+            context={'request': request}
+        ).data
+        
+        return Response({
+            'statistics': {
+                'total_parking_lots': lots.count(),
+                'total_reservations': total_reservations,
+                'active_reservations': active_reservations,
+                'completed_reservations': completed_reservations,
+                'total_revenue': float(total_revenue) if total_revenue else 0.0
+            },
+            'recent_reservations': recent_reservations
+        })
+
+
+class PredictAvailabilityView(APIView):
+    """
+    Predict when a parking spot will become available
+    """
+    def get(self, request):
+        spot_id = request.GET.get('spot_id')
+        if not spot_id:
+            return Response({'error': 'spot_id required'}, status=400)
+        
+        try:
+            spot = ParkingSpot.objects.get(id=spot_id)
+            
+            if spot.status == 'available':
+                return Response({
+                    'status': 'available',
+                    'message': 'Spot is currently available',
+                    'minutes_until_available': 0
+                })
+                
+            # Check active reservation
+            reservation = Reservation.objects.filter(
+                spot=spot, 
+                status='active'
+            ).first()
+            
+            if reservation:
+                # Calculate expected end time
+                start_time = reservation.start_time
+                duration_hours = float(reservation.expected_duration_hours)
+                elapsed_hours = (timezone.now() - start_time).total_seconds() / 3600
+                
+                remaining_hours = max(0, duration_hours - elapsed_hours)
+                minutes = int(remaining_hours * 60)
+                
+                return Response({
+                    'status': 'occupied',
+                    'message': f'Spot expected to be available in {minutes} minutes',
+                    'minutes_until_available': minutes,
+                    'confidence': 0.85  # Mock confidence
+                })
+            
+            # If occupied but no reservation (e.g. drive-in), assume 2 hours average
+            return Response({
+                'status': 'occupied',
+                'message': 'Spot expected to be available in approx. 60 minutes',
+                'minutes_until_available': 60,
+                'confidence': 0.60
+            })
+            
+        except ParkingSpot.DoesNotExist:
+            return Response({'error': 'Spot not found'}, status=404)

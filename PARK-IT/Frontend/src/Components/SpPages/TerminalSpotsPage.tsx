@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 import { useParams, Link } from 'react-router-dom';
 import ParkingSpotCard from './ParkingSpotCard';
 
@@ -14,6 +14,7 @@ interface ParkingSpot {
   status: 'available' | 'occupied' | 'reserved';
   is_reserved: boolean;
   image_url: string | null;
+  price_per_hour: number;
 }
 
 interface Terminal {
@@ -32,6 +33,7 @@ function TerminalSpotsPage() {
   const [terminal, setTerminal] = useState<Terminal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editingSpot, setEditingSpot] = useState<ParkingSpot | null>(null);
 
   useEffect(() => {
     const setupAxios = async () => {
@@ -85,6 +87,7 @@ function TerminalSpotsPage() {
         status: spot.status,
         is_reserved: spot.is_reserved,
         image_url: spot.image_url,
+        price_per_hour: spot.price_per_hour || 0.0,
       }));
       setSpots(transformedSpots);
     } catch (err: any) {
@@ -103,10 +106,21 @@ function TerminalSpotsPage() {
   };
 
   const handleEditSpot = (spot: ParkingSpot) => {
-    // Handle edit logic here
-    console.log('Editing spot:', spot);
-    // You can navigate to an edit page or open a modal
-    // Example: navigate(`/edit-spot/${spot.id}`);
+    setEditingSpot(spot);
+  };
+
+  const handleSaveSpot = async (updatedSpot: Partial<ParkingSpot>) => {
+    if (!editingSpot) return;
+    try {
+      await axios.patch(`http://localhost:8000/api/parking-spots/${editingSpot.id}/`, updatedSpot, {
+        withCredentials: true,
+      });
+      setEditingSpot(null);
+      fetchTerminalAndSpots();
+      alert('Spot updated successfully');
+    } catch (err: any) {
+      alert('Failed to update spot: ' + (err.response?.data?.message || err.message));
+    }
   };
 
   if (loading) {
@@ -220,8 +234,68 @@ function TerminalSpotsPage() {
           )}
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {editingSpot && (
+        <EditSpotModal 
+          spot={editingSpot} 
+          onClose={() => setEditingSpot(null)} 
+          onSave={handleSaveSpot} 
+        />
+      )}
     </div>
   );
 }
+
+const EditSpotModal: React.FC<{ 
+  spot: ParkingSpot; 
+  onClose: () => void; 
+  onSave: (spot: Partial<ParkingSpot>) => void 
+}> = ({ spot, onClose, onSave }) => {
+  const [price, setPrice] = useState(spot.price_per_hour);
+  const [status, setStatus] = useState(spot.status);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({ price_per_hour: price, status });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+        <h3 className="text-xl font-bold mb-4">Edit Spot {spot.spot_number}</h3>
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Price per Hour ($)</label>
+            <input 
+              type="number" 
+              step="0.01"
+              value={price} 
+              onChange={e => setPrice(parseFloat(e.target.value))}
+              className="w-full border rounded px-3 py-2"
+            />
+          </div>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select 
+              value={status} 
+              onChange={e => setStatus(e.target.value as any)}
+              className="w-full border rounded px-3 py-2"
+            >
+              <option value="available">Available</option>
+              <option value="occupied">Occupied</option>
+              <option value="reserved">Reserved</option>
+              <option value="maintenance">Maintenance</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 export default TerminalSpotsPage;

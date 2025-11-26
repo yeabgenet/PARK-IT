@@ -12,7 +12,7 @@ from core.views import (
     ParkingLotViewSet,
     ParkingSpotViewSet,
     CarViewSet,
-    DriverRegistrationView,
+    RegisterDriverView,
     RegisterServiceProviderView,
     LoginView,
     CsrfTokenView,
@@ -40,7 +40,6 @@ router.register(r'spot-history', SpotHistoryViewSet)
 
 urlpatterns = [
     path('api/terminals/', views.TerminalListView.as_view(), name='terminals-list'),
-    path('api/parking-spots/', views.ParkingSpotViewSet.as_view({'get': 'list', 'post': 'create'}), name='parking-spots'), #added
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api/', include('core.urls')), # This includes core's urls.py if it exists
@@ -52,7 +51,6 @@ urlpatterns = [
     path('api/user/', views.UserView.as_view(), name='user'),
     path('api/parking-lot-image/<int:pk>/', parkinglot_image, name='parkinglot_image'),
     # path('', TemplateView.as_view(template_name='index.html'), name='home'), # This is duplicated by the catch-all
-    path('api/terminals/', TerminalListView.as_view(), name='terminals-list'),  # <-- ADD THIS
     path('api/parking-spot-image/<int:pk>/', parkingspot_image, name='parkingspot_image'),
     path('api/check-driver/', CheckDriverView.as_view(), name='check-driver'),
     path('api/parking-spots/<int:pk>/status/', ParkingSpotStatusUpdateView.as_view(), name='parking-spot-status-update'),

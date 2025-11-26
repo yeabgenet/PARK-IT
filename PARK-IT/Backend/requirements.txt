@@ -6,3 +6,9 @@ pillow==11.3.0
 psycopg2-binary==2.9.10
 sqlparse==0.5.3
 typing_extensions==4.15.0
+opencv-python==4.10.0.84
+numpy==1.26.4
+geopy==2.4.1
+redis==5.2.1
+channels==4.1.0
+channels-redis==4.2.0

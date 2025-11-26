@@ -47,6 +47,8 @@ interface RegisterResponse {
     username: string;
     role: string | null;
   };
+  requires_verification?: boolean;
+  email?: string;
 }
 
 const countryCityHoodsData: CountryData = {
@@ -93,7 +95,7 @@ function UserForm() {
     license_number: '',
     license_plate: '',
     phone_number: '',
-    age: 0,
+    age: '',
     country: '',
     city: '',
     address: '',
@@ -103,7 +105,7 @@ function UserForm() {
     company_name: '',
     contact_person: '',
     phone_number: '',
-    age: 0,
+    age: '',
     country: '',
     city: '',
     address: '',
@@ -205,7 +207,7 @@ function UserForm() {
       let response;
       if (selectedRole === 'Driver') {
         Object.entries(driverData).forEach(([key, value]) => {
-          if (value !== '' && value !== 0) {
+          if (value !== '') {
             formData.append(key, value.toString());
           }
         });
@@ -217,7 +219,10 @@ function UserForm() {
         }
         
         response = await axios.post<RegisterResponse>('http://localhost:8000/api/register/driver/', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: { 
+            'Content-Type': 'multipart/form-data',
+            'X-CSRFToken': axios.defaults.headers.common['X-CSRFToken']
+          },
           withCredentials: true,
         });
       } else if (selectedRole === 'Service Provider') {
@@ -225,7 +230,7 @@ function UserForm() {
         console.log('Service Provider data:', serviceProviderData);
         
         Object.entries(serviceProviderData).forEach(([key, value]) => {
-          if (value !== '' && value !== 0) {
+          if (value !== '') {
             formData.append(key, value.toString());
           }
         });
@@ -238,7 +243,10 @@ function UserForm() {
         }
         
         response = await axios.post<RegisterResponse>('http://localhost:8000/api/register/service-provider/', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: { 
+            'Content-Type': 'multipart/form-data',
+            'X-CSRFToken': axios.defaults.headers.common['X-CSRFToken']
+          },
           withCredentials: true,
         });
       } else {
@@ -248,7 +256,12 @@ function UserForm() {
   
       console.log('Register response:', response.data);
       
-      if (response.data.message === 'User created successfully') {
+      // Check if email verification is required
+      if (response.data.requires_verification) {
+        // Redirect to verification page with email
+        navigate('/verify-email', { state: { email: response.data.email } });
+      } else if (response.data.message === 'User created successfully') {
+        // Old flow - direct login (shouldn't happen with new verification system)
         const role = response.data.user?.role?.toLowerCase();
         console.log('Redirecting to:', role === 'service provider' ? '/service-provider' : '/');
         navigate(role === 'service provider' ? '/service-provider' : '/');

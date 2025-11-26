@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'channels',
     'core.apps.CoreConfig',
     
 ]
@@ -45,12 +46,23 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
 ]
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = ['content-type', 'x-csrftoken']
-CSRF_TRUSTED_ORIGINS = ['http://localhost:5173']
+CORS_ALLOW_HEADERS = [
+    'content-type',
+    'x-csrftoken',
+    'authorization',
+    'accept',
+    'accept-encoding',
+    'x-requested-with',
+]
+CSRF_TRUSTED_ORIGINS = ['http://localhost:5173', 'http://localhost:3000']
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
 
 ROOT_URLCONF = 'Parkit_Project.urls'
 
@@ -76,8 +88,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'parkit',
-        'USER': 'ghost',
-        'PASSWORD': 'yg1994#codetillyoudie',
+        'USER': 'postgres',
+        'PASSWORD': '123456789',
         'HOST': 'localhost',
         'PORT': '5432',
         'CONN_MAX_AGE': 600,
@@ -135,6 +147,12 @@ LOGGING = {
         },
     },
 }
+
+# Email configuration (console backend for development)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 1025
+DEFAULT_FROM_EMAIL = 'noreply@parkit.com'
 
 CACHES = {
     'default': {

@@ -1,6 +1,9 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
-from .models import ParkingLot, ParkingSpot, Car, Driver, ServiceProvider, User, Role , SpotHistory, ParkingSpot
+from .models import (
+    ParkingLot, ParkingSpot, Car, Driver, ServiceProvider, User, Role, 
+    SpotHistory, Reservation, Notification, SpotDetection
+)
 
 
 class ParkingSpotRecommendationSerializer(serializers.ModelSerializer):
@@ -235,7 +238,7 @@ class ParkingSpotSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ParkingSpot
-        fields = ['id', 'lot', 'spot_number', 'is_reserved', 'status', 'image_url', 'spot_picture']
+        fields = ['id', 'lot', 'spot_number', 'is_reserved', 'status', 'image_url', 'spot_picture', 'price_per_hour']
 
     def get_image_url(self, obj):
         request = self.context.get('request')
@@ -268,3 +271,86 @@ class SpotHistorySerializer(serializers.ModelSerializer):
         if obj.driver and obj.driver.user:
             return f"{obj.driver.user.first_name} {obj.driver.user.last_name}".strip() or obj.driver.user.username
         return None
+
+
+class ReservationSerializer(serializers.ModelSerializer):
+    """Serializer for parking reservations"""
+    spot_details = serializers.SerializerMethodField()
+    driver_name = serializers.SerializerMethodField()
+    lot_name = serializers.CharField(source='spot.lot.name', read_only=True)
+    lot_address = serializers.CharField(source='spot.lot.address', read_only=True)
+    elapsed_time = serializers.SerializerMethodField()
+    current_cost = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Reservation
+        fields = [
+            'id', 'spot', 'driver', 'car', 'spot_details', 'driver_name',
+            'lot_name', 'lot_address', 'reservation_time', 'start_time', 
+            'end_time', 'expected_duration_hours', 'price_per_hour',
+            'total_cost', 'status', 'is_paid', 'notes', 'created_at',
+            'elapsed_time', 'current_cost'
+        ]
+        read_only_fields = ['reservation_time', 'created_at', 'total_cost']
+    
+    def get_spot_details(self, obj):
+        return {
+            'id': obj.spot.id,
+            'spot_number': obj.spot.spot_number,
+            'status': obj.spot.status
+        }
+    
+    def get_driver_name(self, obj):
+        return f"{obj.driver.user.first_name} {obj.driver.user.last_name}".strip() or obj.driver.user.username
+    
+    def get_elapsed_time(self, obj):
+        """Calculate elapsed time in hours if reservation is active"""
+        if obj.status == 'active' and obj.start_time:
+            from django.utils import timezone
+            elapsed = (timezone.now() - obj.start_time).total_seconds() / 3600
+            return round(elapsed, 2)
+        return None
+    
+    def get_current_cost(self, obj):
+        """Calculate current cost based on elapsed time"""
+        elapsed = self.get_elapsed_time(obj)
+        if elapsed:
+            return round(elapsed * float(obj.price_per_hour), 2)
+        return None
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """Serializer for notifications"""
+    reservation_details = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'recipient', 'notification_type', 'title', 'message',
+            'reservation', 'parking_lot', 'parking_spot', 'is_read',
+            'read_at', 'created_at', 'reservation_details'
+        ]
+        read_only_fields = ['created_at', 'read_at']
+    
+    def get_reservation_details(self, obj):
+        if obj.reservation:
+            return {
+                'id': obj.reservation.id,
+                'spot_number': obj.reservation.spot.spot_number,
+                'driver': obj.reservation.driver.user.username
+            }
+        return None
+
+
+class SpotDetectionSerializer(serializers.ModelSerializer):
+    """Serializer for YOLO detection results"""
+    spot_number = serializers.CharField(source='spot.spot_number', read_only=True)
+    lot_name = serializers.CharField(source='spot.lot.name', read_only=True)
+    
+    class Meta:
+        model = SpotDetection
+        fields = [
+            'id', 'spot', 'spot_number', 'lot_name', 'is_occupied',
+            'confidence', 'detected_at'
+        ]
+        read_only_fields = ['detected_at']

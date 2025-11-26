@@ -8,6 +8,7 @@ interface ParkingSpot {
   status: 'available' | 'occupied' | 'reserved';
   is_reserved: boolean;
   image_url: string | null;
+  price_per_hour?: number;
   lot: {
     id: number;
     name: string;
@@ -304,6 +305,11 @@ function ParkingSpotCard({ spot, onEdit, onDelete, onStatusChange }: ParkingSpot
               <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
             </svg>
             <span className="truncate">{spot.lot.address}</span>
+          </div>
+          {/* Price Display */}
+          <div className="flex items-center text-sm text-gray-600">
+            <span className="font-semibold mr-1">Price:</span>
+            <span>${spot.price_per_hour ? Number(spot.price_per_hour).toFixed(2) : '0.00'}/hr</span>
           </div>
         </div>
 

@@ -24,6 +24,8 @@ class User(AbstractUser):
     role = models.ForeignKey(Role, on_delete=models.CASCADE, null=True, blank=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True, blank=True)
     profile_picture = models.ImageField(upload_to='profile_pics/', null=True, blank=True)  # Added
+    verification_code = models.CharField(max_length=6, null=True, blank=True)
+    verification_code_created_at = models.DateTimeField(null=True, blank=True)
 
     groups = models.ManyToManyField(
         'auth.Group',
@@ -351,3 +353,151 @@ class ParkingSpotHistory(models.Model):
     def __str__(self):
         driver_info = f" by {self.driver}" if self.driver else ""
         return f"{self.spot.spot_number} - {self.action}{driver_info} at {self.created_at}"
+
+
+class Reservation(models.Model):
+    """
+    Represents a parking spot reservation by a driver
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('expired', 'Expired'),
+    ]
+    
+    spot = models.ForeignKey(ParkingSpot, on_delete=models.CASCADE, related_name='reservations')
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='reservations')
+    car = models.ForeignKey(Car, on_delete=models.CASCADE, related_name='reservations')
+    
+    # Timing
+    reservation_time = models.DateTimeField(auto_now_add=True)
+    start_time = models.DateTimeField(null=True, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    expected_duration_hours = models.DecimalField(max_digits=4, decimal_places=2, default=1.00)
+    
+    # Pricing
+    price_per_hour = models.DecimalField(max_digits=6, decimal_places=2)
+    total_cost = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    is_paid = models.BooleanField(default=False)
+    
+    # Metadata
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['driver', 'status']),
+            models.Index(fields=['spot', 'status']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"Reservation {self.id} - {self.driver.user.username} at {self.spot}"
+    
+    def calculate_cost(self):
+        """Calculate cost based on actual time spent"""
+        if self.start_time and self.end_time:
+            duration = (self.end_time - self.start_time).total_seconds() / 3600  # hours
+            self.total_cost = round(duration * float(self.price_per_hour), 2)
+            self.save()
+            return self.total_cost
+        return None
+    
+    def activate(self):
+        """Activate the reservation when driver arrives"""
+        self.status = 'active'
+        self.start_time = timezone.now()
+        self.spot.status = 'occupied'
+        self.spot.is_reserved = False
+        self.spot.save()
+        self.save()
+    
+    def complete(self):
+        """Complete the reservation and calculate final cost"""
+        self.status = 'completed'
+        self.end_time = timezone.now()
+        self.spot.status = 'available'
+        self.spot.save()
+        self.calculate_cost()
+        self.save()
+
+
+class Notification(models.Model):
+    """
+    Notifications for service providers about parking events
+    """
+    NOTIFICATION_TYPES = [
+        ('reservation', 'New Reservation'),
+        ('arrival', 'Driver Arrived'),
+        ('departure', 'Driver Departed'),
+        ('cancellation', 'Reservation Cancelled'),
+        ('payment', 'Payment Received'),
+        ('system', 'System Notification'),
+    ]
+    
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    
+    # Related objects
+    reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, null=True, blank=True)
+    parking_lot = models.ForeignKey(ParkingLot, on_delete=models.CASCADE, null=True, blank=True)
+    parking_spot = models.ForeignKey(ParkingSpot, on_delete=models.CASCADE, null=True, blank=True)
+    
+    # Status
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', 'is_read']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.notification_type} for {self.recipient.username}"
+    
+    def mark_as_read(self):
+        """Mark notification as read"""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save()
+
+
+class SpotDetection(models.Model):
+    """
+    AI Detection results for parking spots using YOLO
+    """
+    spot = models.ForeignKey(ParkingSpot, on_delete=models.CASCADE, related_name='detections')
+    
+    # Detection data
+    is_occupied = models.BooleanField(default=False)
+    confidence = models.FloatField()  # Detection confidence (0-1)
+    detection_image = models.BinaryField(null=True, blank=True)
+    image_mime_type = models.CharField(max_length=50, null=True, blank=True)
+    
+    # Metadata
+    detected_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-detected_at']
+        indexes = [
+            models.Index(fields=['spot', 'detected_at']),
+        ]
+    
+    def __str__(self):
+        status = "Occupied" if self.is_occupied else "Empty"
+        return f"{self.spot} - {status} ({self.confidence:.2%})"
