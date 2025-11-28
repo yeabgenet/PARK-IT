@@ -86,36 +86,51 @@ const VerifyParkingLot: React.FC = () => {
     }));
   };
 
-  const getCurrentLocation = (): void => {
+  const getCurrentLocation = async (): Promise<void> => {
     if (!navigator.geolocation) {
-      setError('Geolocation is not supported by this browser.');
+      setError('Geolocation is not supported by your browser.');
       return;
     }
-
+  
     setLoading(true);
     setError('');
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setFormData({
-          latitude: position.coords.latitude.toString(),
-          longitude: position.coords.longitude.toString()
-        });
-        setLoading(false);
-        setSuccess('Location captured successfully!');
-      },
-      (error) => {
-        setError(`Error getting location: ${error.message}`);
-        setLoading(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
+    setSuccess('');
+  
+    // Modern promise-based API (much more reliable)
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          reject,
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 60000,
+          }
+        );
+      });
+  
+      const { latitude, longitude } = position.coords;
+      setFormData({
+        latitude: latitude.toFixed(6),
+        longitude: longitude.toFixed(6),
+      });
+      setSuccess('Location captured successfully!');
+    } catch (err: any) {
+      let message = 'Unknown error';
+      if (err.code) {
+        switch (err.code) {
+          case 1: message = 'Location permission denied. Please allow location access.'; break;
+          case 2: message = 'Position update is unavailable (try moving outside or enabling Wi-Fi)'; break;
+          case 3: message = 'Location request timed out. Try again.'; break;
+        }
       }
-    );
+      setError(`Error getting location: ${message}`);
+    } finally {
+      setLoading(false);
+    }
   };
-
+  
   const validateCoordinates = (): boolean => {
     const lat = parseFloat(formData.latitude);
     const lng = parseFloat(formData.longitude);

@@ -88,11 +88,11 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'parkit',
-        'USER': 'postgres',
-        'PASSWORD': '123456789',
+        'USER': 'ghost',
+        'PASSWORD': 'yg1994#codetillyoudie',
         'HOST': 'localhost',
         'PORT': '5432',
-        'CONN_MAX_AGE': 600,
+       # 'CONN_MAX_AGE': 600,
     }
 }
 
